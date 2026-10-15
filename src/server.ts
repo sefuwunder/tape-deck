@@ -113,7 +113,9 @@ function startDownload(url: string, format: FormatKey, title: string, duration: 
 
 async function info(url: string) {
   const proc = Bun.spawn(
-    ["yt-dlp", "--skip-download", "--no-playlist", "--print", "%(title)s",
+    ["yt-dlp", "--skip-download", "--no-playlist",
+     "--extractor-args", "youtube:player_client=android",
+     "--print", "%(title)s",
      "--print", "%(duration_string)s", "--print", "%(id)s", url],
     { stdout: "pipe", stderr: "pipe" }
   );

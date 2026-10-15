@@ -133,4 +133,17 @@ describe("friendlyError", () => {
   test("falls back to code", () => {
     expect(friendlyError("", 1)).toBe("yt-dlp exited with code 1");
   });
+  test("403 blocked", () => {
+    expect(friendlyError("ERROR: Unable to download video data: HTTP Error 403: Forbidden", 1))
+      .toMatch(/blocked.*403/);
+  });
+});
+
+describe("buildArgs", () => {
+  test("uses android player client to dodge 403s", () => {
+    const a = buildArgs("https://youtu.be/abc123def45", "mp3", "/tmp/dl");
+    const i = a.indexOf("--extractor-args");
+    expect(i).toBeGreaterThan(-1);
+    expect(a[i + 1]).toBe("youtube:player_client=android");
+  });
 });

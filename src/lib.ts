@@ -25,6 +25,10 @@ export function buildArgs(url: string, format: FormatKey, outDir: string): strin
     "--no-playlist",
     "--restrict-filenames",
     "--newline",
+    // android player client dodges most of YouTube's 403/bot-check blocks;
+    // fine for an audio-only app (audio streams are fully available)
+    "--extractor-args",
+    "youtube:player_client=android",
     "--print",
     "after_move:filepath",
     "-o",
@@ -105,6 +109,8 @@ export function friendlyError(stderrTail: string, code: number): string {
   const t = stderrTail || "";
   if (/sign in to confirm you('| a)re not a bot/i.test(t))
     return "youtube bot-check — wait a bit and retry, or update yt-dlp (yt-dlp -U)";
+  if (/http error 403|403: forbidden/i.test(t))
+    return "youtube blocked the request (403) — update yt-dlp (yt-dlp -U) and retry; if it persists, wait a few minutes or try another video";
   if (/video unavailable/i.test(t)) return "video unavailable (removed / region-blocked)";
   if (/private video/i.test(t)) return "private video — can't download";
   if (/429|too many requests/i.test(t))

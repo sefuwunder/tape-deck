@@ -72,3 +72,53 @@ export function durationToSec(s: string): number {
   if (parts.some(isNaN)) return 0;
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }
+
+/** Build yt-dlp argv for a YouTube search (flat, fast: id + title only). */
+export function buildSearchArgs(query: string, n = 5): string[] {
+  const count = Math.min(10, Math.max(1, Math.floor(n)));
+  return [
+    `ytsearch${count}:${query}`,
+    "--flat-playlist",
+    "--no-warnings",
+    "--print",
+    "%(id)s\t%(title)s",
+  ];
+}
+
+/** Parse tab-separated search output into [{id, title}]. */
+export function parseSearchOutput(text: string): { id: string; title: string }[] {
+  const out: { id: string; title: string }[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    const tab = t.indexOf("\t");
+    if (tab < 0) continue;
+    const id = t.slice(0, tab).trim();
+    const title = t.slice(tab + 1).trim();
+    if (/^[\w-]{11}$/.test(id) && title) out.push({ id, title });
+  }
+  return out;
+}
+
+/** Turn yt-dlp's stderr tail + exit code into something a human can act on. */
+export function friendlyError(stderrTail: string, code: number): string {
+  const t = stderrTail || "";
+  if (/sign in to confirm you('| a)re not a bot/i.test(t))
+    return "youtube bot-check — wait a bit and retry, or update yt-dlp (yt-dlp -U)";
+  if (/video unavailable/i.test(t)) return "video unavailable (removed / region-blocked)";
+  if (/private video/i.test(t)) return "private video — can't download";
+  if (/429|too many requests/i.test(t))
+    return "youtube rate-limited us — wait a few minutes and retry";
+  if (/unsupported url/i.test(t)) return "unsupported url";
+  if (/no video formats found|requested format not available/i.test(t))
+    return "no audio stream found — try updating yt-dlp (yt-dlp -U)";
+  if (/nsig|signature/i.test(t) && /extract/i.test(t))
+    return "youtube changed something — update yt-dlp (yt-dlp -U)";
+  const lines = t
+    .split("\n")
+    .map((l) => l.replace(/^ERROR:\s*/i, "").replace(/^WARNING:\s*/i, "").trim())
+    .filter(Boolean);
+  const last = lines[lines.length - 1];
+  if (last) return last.slice(0, 140);
+  return `yt-dlp exited with code ${code}`;
+}

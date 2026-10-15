@@ -1,5 +1,5 @@
 // tape-deck server: Bun + zero deps. yt-dlp does the heavy lifting.
-import { validateUrl, buildArgs, parseProgress, safeName, FORMATS } from "./lib";
+import { validateUrl, buildArgs, buildSearchArgs, parseProgress, parseSearchOutput, safeName, friendlyError, FORMATS } from "./lib";
 import type { FormatKey } from "./lib";
 
 const PORT = 3030;
@@ -52,6 +52,7 @@ function startDownload(url: string, format: FormatKey, title: string, duration: 
   (async () => {
     const dec = new TextDecoder();
     let buf = "";
+    const errTail: string[] = [];
     const pump = async (stream: ReadableStream<Uint8Array>, isErr: boolean) => {
       const reader = stream.getReader();
       try {
@@ -70,6 +71,8 @@ function startDownload(url: string, format: FormatKey, title: string, duration: 
                 job.progress = Math.max(job.progress, p.progress);
                 job.phase = p.phase;
               }
+              errTail.push(t);
+              if (errTail.length > 10) errTail.shift();
             } else if (t && !t.startsWith("[") && /\.(mp3|m4a|flac)$/i.test(t)) {
               // after_move:filepath print
               job.filename = t.split("/").pop() || "";
@@ -100,7 +103,7 @@ function startDownload(url: string, format: FormatKey, title: string, duration: 
       }
     } else {
       job.status = "error";
-      job.error = `yt-dlp exited with code ${code}`;
+      job.error = friendlyError(errTail.join("\n"), code);
     }
     job.proc = null;
   })();
@@ -126,6 +129,24 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status });
 }
 
+async function toolVersion(cmd: string): Promise<string | null> {
+  try {
+    const p = Bun.spawn([cmd, "--version"], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(p.stdout).text();
+    const code = await p.exited;
+    if (code === 0 && out.trim()) return out.trim().split("\n")[0];
+  } catch { /* fall through to which */ }
+  try {
+    const p = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(p.stdout).text();
+    await p.exited;
+    if (out.trim()) return "installed";
+  } catch { /* not found */ }
+  return null;
+}
+const YTDLP_VERSION = await toolVersion("yt-dlp");
+const FFMPEG_VERSION = await toolVersion("ffmpeg");
+
 Bun.serve({
   port: PORT,
   hostname: "127.0.0.1",
@@ -146,11 +167,34 @@ Bun.serve({
     }
 
     // ---- api ----
+    if (p === "/api/health" && req.method === "GET") {
+      return json({ ok: true, ytDlp: YTDLP_VERSION, ffmpeg: FFMPEG_VERSION });
+    }
+
     if (p === "/api/info" && req.method === "POST") {
       const { url: raw } = await req.json().catch(() => ({}));
       const v = validateUrl(raw);
       if (!v.ok) return json({ ok: false, error: v.error }, 400);
       return json(await info(v.url!));
+    }
+
+    if (p === "/api/search" && req.method === "POST") {
+      const { artist = "", title = "" } = await req.json().catch(() => ({}));
+      const q = `${artist} ${title}`.trim().replace(/\s+/g, " ");
+      if (!q) return json({ ok: false, error: "empty query" }, 400);
+      if (q.length > 200) return json({ ok: false, error: "query too long" }, 400);
+      const proc = Bun.spawn(["yt-dlp", ...buildSearchArgs(q)], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const out = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      if (code !== 0) return json({ ok: false, error: "search failed" });
+      const results = parseSearchOutput(out).map((r) => ({
+        ...r,
+        url: `https://www.youtube.com/watch?v=${r.id}`,
+      }));
+      return json({ ok: true, results });
     }
 
     if (p === "/api/download" && req.method === "POST") {
@@ -213,3 +257,4 @@ Bun.serve({
 });
 
 console.log(`tape-deck on http://127.0.0.1:${PORT}`);
+console.log(`yt-dlp: ${YTDLP_VERSION ?? "NOT FOUND"} | ffmpeg: ${FFMPEG_VERSION ?? "NOT FOUND"}`);

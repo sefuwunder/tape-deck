@@ -46,3 +46,14 @@ Single videos only (`--no-playlist` is always passed). Files land in
   counter is reserved for the extract/convert step.
 - Filenames are `--restrict-filenames`'d and include the video id, so
   collisions are near-impossible; served files are extension-allowlisted.
+
+## Troubleshooting
+
+- The deck shows the real reason a download fails (bot-check, rate
+  limit, unavailable video, ...). `GET /api/health` reports the
+  yt-dlp/ffmpeg versions the server sees.
+- Most "code 1" failures are an outdated yt-dlp — YouTube changes
+  things often. Update it: `yt-dlp -U` (or reinstall if yours came
+  from a distro package).
+- `429 / too many requests` means YouTube is throttling that IP —
+  wait a few minutes and hit REC again.

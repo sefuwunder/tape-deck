@@ -125,6 +125,33 @@ body{
   box-shadow:inset 2px 2px 0 rgba(255,255,255,.3), inset -2px -2px 0 rgba(0,0,0,.4), 3px 3px 0 #000;
   padding:0 14px;}
 .abtn:active{transform:translate(2px,2px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.3), inset -2px -2px 0 rgba(0,0,0,.4), 1px 1px 0 #000;}
+.modetabs{display:flex;gap:8px;margin-top:12px;}
+.mtab{flex:1;font-family:'Press Start 2P';font-size:9px;padding:10px 4px;cursor:pointer;color:#7a7a86;
+  background:#17171c;border:3px solid #0a0a0c;border-radius:4px;
+  box-shadow:inset 1px 1px 0 rgba(255,255,255,.08), 2px 2px 0 #000;letter-spacing:1px;}
+.mtab.sel{background:linear-gradient(#6a5a20,#4a3d12);color:var(--amber);
+  box-shadow:inset 2px 2px 0 rgba(255,255,255,.2), 2px 2px 0 #000;}
+.searchrow{display:flex;gap:8px;margin-top:0;}
+.searchrow input{flex:1;min-width:0;background:#0d0d12;border:3px solid #050507;border-radius:4px;
+  box-shadow:inset 0 0 10px #000;color:var(--amber);font-family:'VT323',monospace;font-size:20px;
+  padding:8px 10px;outline:none;}
+.searchrow input:focus{border-color:#4a3a10;}
+.searchrow input::placeholder{color:#5a4a20;}
+.jcard{margin-top:12px;background:var(--cream);border:3px solid #0a0a0c;border-radius:3px;
+  padding:10px 12px;color:#2a2418;box-shadow:3px 3px 0 rgba(0,0,0,.5);}
+.jcard .jh{font-family:'Press Start 2P';font-size:9px;color:#8a2be2;letter-spacing:1px;
+  border-bottom:2px solid #2a2418;padding-bottom:8px;margin-bottom:4px;
+  display:flex;justify-content:space-between;align-items:center;}
+.jcard .jh .x{cursor:pointer;color:#a03030;font-size:12px;padding:2px 6px;}
+.jcard ol{list-style:none;margin:6px 0 2px;padding:0;}
+.jcard li{display:flex;align-items:baseline;gap:8px;padding:7px 4px;cursor:pointer;
+  border-bottom:1px dotted #a89a72;font-size:20px;}
+.jcard li:last-child{border-bottom:none;}
+.jcard li:hover{background:rgba(138,43,226,.12);}
+.jcard li .n{font-family:'Press Start 2P';font-size:9px;color:#8a2be2;flex:none;}
+.jcard li .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jcard li .go{font-family:'Press Start 2P';font-size:8px;color:#2c6b22;flex:none;}
+.jcard .jfoot{font-size:15px;color:#6a5f43;margin-top:6px;text-align:center;}
 .transport{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px;}
 .tbtn{font-family:'Press Start 2P';font-size:11px;color:#eee;cursor:pointer;user-select:none;
   background:linear-gradient(#55555e,#33333a);border:3px solid #0a0a0c;border-radius:6px;
@@ -217,9 +244,26 @@ body{
         <div class="needle" id="needleR"></div><div class="vlab">R</div></div>
     </div>
 
-    <div class="urlrow">
+    <div class="modetabs">
+      <button class="mtab sel" id="tabUrl">URL</button>
+      <button class="mtab" id="tabSearch">SEARCH</button>
+    </div>
+
+    <div class="urlrow" id="urlRow" style="margin-top:12px;">
       <input id="urlInput" type="url" placeholder="paste youtube url..." autocomplete="off" spellcheck="false">
       <button class="abtn px" id="loadBtn">LOAD</button>
+    </div>
+
+    <div class="searchrow" id="searchRow" style="margin-top:12px;display:none;">
+      <input id="artistInput" placeholder="artist..." autocomplete="off" spellcheck="false">
+      <input id="titleInput" placeholder="song title..." autocomplete="off" spellcheck="false">
+      <button class="abtn px" id="searchBtn">TUNE</button>
+    </div>
+
+    <div class="jcard" id="jcard" style="display:none;">
+      <div class="jh"><span>TRACK LISTING</span><span class="x" id="jcardX">&#10005;</span></div>
+      <ol id="trackList"></ol>
+      <div class="jfoot">pick a track to dub it to tape</div>
     </div>
 
     <div class="transport">
@@ -295,7 +339,11 @@ function setPacks(p) { // p: 0..1 tape moved left->right
   $("packR").style.transform = `scale(${0.45 + 0.55 * p})`;
 }
 setPacks(0);
-function status(t) { $("statusLine").innerHTML = "&gt; " + t; }
+function status(t) { $("statusLine").innerHTML = "&gt; " + t; $("statusLine").removeAttribute("title"); }
+function statusErr(t) {
+  $("statusLine").innerHTML = "&gt; ERR: " + t;
+  $("statusLine").title = t;
+}
 function recLed(mode) { // off|blink|on
   const l = $("recLed");
   l.classList.remove("on", "blink");
@@ -366,6 +414,67 @@ function tick() {
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+
+// ---------- mode tabs ----------
+$("tabUrl").addEventListener("click", () => setMode("url"));
+$("tabSearch").addEventListener("click", () => setMode("search"));
+function setMode(m) {
+  $("tabUrl").classList.toggle("sel", m === "url");
+  $("tabSearch").classList.toggle("sel", m === "search");
+  $("urlRow").style.display = m === "url" ? "" : "none";
+  $("searchRow").style.display = m === "search" ? "flex" : "none";
+  if (m === "search") $("artistInput").focus();
+}
+
+// ---------- search ----------
+$("searchBtn").addEventListener("click", doSearch);
+$("titleInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doSearch();
+});
+$("artistInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doSearch();
+});
+$("jcardX").addEventListener("click", () => { $("jcard").style.display = "none"; });
+
+async function doSearch() {
+  const artist = $("artistInput").value.trim();
+  const title = $("titleInput").value.trim();
+  if (!artist && !title) { status("TYPE AN ARTIST OR TITLE"); return; }
+  if (S.mode === "recording") return;
+  status("TUNING...");
+  $("searchBtn").disabled = true;
+  try {
+    const r = await api.post("/api/search", { artist, title });
+    if (!r.ok) throw new Error(r.error || "search failed");
+    renderTracks(r.results || []);
+    if (!(r.results || []).length) status("NO STATIONS FOUND");
+    else status(`FOUND ${(r.results || []).length} TRACKS`);
+  } catch (e) {
+    status("ERR: " + String(e.message || e).toUpperCase().slice(0, 36));
+  }
+  $("searchBtn").disabled = false;
+}
+
+function renderTracks(results) {
+  const box = $("jcard");
+  const ol = $("trackList");
+  ol.innerHTML = "";
+  results.forEach((t, i) => {
+    const li = document.createElement("li");
+    const num = String(i + 1).padStart(2, "0");
+    li.innerHTML = `<span class="n">${num}</span><span class="t"></span><span class="go">&#9654;</span>`;
+    li.querySelector(".t").textContent = t.title;
+    li.title = t.title;
+    li.addEventListener("click", () => {
+      box.style.display = "none";
+      $("urlInput").value = t.url;
+      setMode("url");
+      loadInfo();
+    });
+    ol.appendChild(li);
+  });
+  box.style.display = results.length ? "" : "none";
+}
 
 // ---------- info / load ----------
 let infoTimer = null;
@@ -443,7 +552,7 @@ async function pollJob() {
       clearInterval(S.poll);
       S.mode = "ready";
       spin(false); recLed("blink");
-      status("ERR: " + String(j.error).toUpperCase().slice(0, 36));
+      statusErr(String(j.error || "unknown error").toUpperCase().slice(0, 120));
     }
   } catch (e) {
     clearInterval(S.poll);
@@ -587,6 +696,10 @@ async function refreshShelf() {
   }
 }
 refreshShelf();
+api.get("/api/health").then((h) => {
+  if (h && h.ok && !h.ytDlp) statusErr("YT-DLP NOT FOUND ON SERVER — INSTALL IT");
+  else if (h && h.ok && !h.ffmpeg) status("WARN: FFMPEG MISSING — MP3/FLAC MAY FAIL");
+}).catch(() => {});
 })();
 </script>
 </body>
